@@ -1,0 +1,50 @@
+# Carpetas de compilacion
+build/
+out/
+.vs/
+x64/
+x86/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Visual Studio
+*.user
+*.suo
+*.sln.docstates
+*.vcxproj.user
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+ipch/
+
+# Binarios y objetos
+*.exe
+*.obj
+*.o
+*.lib
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.idb
+*.res
+*.pch
+
+# Logs y temporales
+*.log
+*.tlog
+*.lastbuildstate
+*.recipe
+*.tmp
+*.cache
