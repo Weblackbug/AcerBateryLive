@@ -142,12 +142,12 @@ std::wstring ReadIniValue(const std::wstring& filePath, const std::wstring& sect
     return buffer;
 }
 
-void ClampThreshold(int& value) {
-    if (value < 1) {
-        value = 1;
-    } else if (value > 100) {
-        value = 100;
-    }
+void ClampLowThresholdValue(int& value) {
+    value = ClampLowThreshold(value);
+}
+
+void ClampHighThresholdValue(int& value) {
+    value = ClampHighThreshold(value);
 }
 
 std::optional<std::wstring> ExtractJsonString(const std::wstring& json, const std::wstring& key) {
@@ -261,8 +261,8 @@ void Config::Load() {
         Save();
     }
 
-    ClampThreshold(config_.lowThresholdPercent);
-    ClampThreshold(config_.highThresholdPercent);
+    ClampLowThresholdValue(config_.lowThresholdPercent);
+    ClampHighThresholdValue(config_.highThresholdPercent);
     if (config_.lowThresholdPercent >= config_.highThresholdPercent) {
         config_.lowThresholdPercent = 20;
         config_.highThresholdPercent = 80;
@@ -313,9 +313,12 @@ void Config::ApplyStartupRegistration(bool enable) const {
     if (enable) {
         wchar_t modulePath[MAX_PATH] = {};
         GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+        std::wstring command = L"\"";
+        command += modulePath;
+        command += L"\" --startup";
         RegSetValueExW(key, kAppName, 0, REG_SZ,
-                       reinterpret_cast<const BYTE*>(modulePath),
-                       static_cast<DWORD>((wcslen(modulePath) + 1) * sizeof(wchar_t)));
+                       reinterpret_cast<const BYTE*>(command.c_str()),
+                       static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
     } else {
         RegDeleteValueW(key, kAppName);
     }

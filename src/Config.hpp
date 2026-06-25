@@ -5,6 +5,31 @@
 
 #include "LaptopBrands.hpp"
 
+constexpr int kLowThresholdMin = 0;
+constexpr int kLowThresholdMax = 60;
+constexpr int kHighThresholdMin = 60;
+constexpr int kHighThresholdMax = 90;
+
+inline int ClampLowThreshold(int value) {
+    if (value < kLowThresholdMin) {
+        return kLowThresholdMin;
+    }
+    if (value > kLowThresholdMax) {
+        return kLowThresholdMax;
+    }
+    return value;
+}
+
+inline int ClampHighThreshold(int value) {
+    if (value < kHighThresholdMin) {
+        return kHighThresholdMin;
+    }
+    if (value > kHighThresholdMax) {
+        return kHighThresholdMax;
+    }
+    return value;
+}
+
 struct AppConfig {
     int lowThresholdPercent = 20;
     int highThresholdPercent = 80;

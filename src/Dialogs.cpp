@@ -3,6 +3,7 @@
 #include "WindowsCommon.hpp"
 #include "AudioPlayer.hpp"
 #include "ChargeControl.hpp"
+#include "Config.hpp"
 #include "LaptopBrands.hpp"
 #include "resource.h"
 
@@ -10,6 +11,7 @@ namespace {
 
 AudioPlayer g_testPlayer;
 HWND g_messageBoxCenterOwner = nullptr;
+bool g_updatingThresholdControls = false;
 
 RECT GetWorkAreaForWindow(HWND window) {
     const HMONITOR monitor =
@@ -44,16 +46,81 @@ INT_PTR CALLBACK MessageBoxCenterHook(int code, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(nullptr, code, wParam, lParam);
 }
 
-int ReadThresholdFromDialog(HWND dialog, int controlId) {
+int ReadThresholdText(HWND dialog, int controlId) {
     wchar_t thresholdText[8] = {};
     GetDlgItemTextW(dialog, controlId, thresholdText, 8);
-    int threshold = _wtoi(thresholdText);
-    if (threshold < 1) {
-        threshold = 1;
-    } else if (threshold > 100) {
-        threshold = 100;
+    return _wtoi(thresholdText);
+}
+
+bool IsLowThresholdControl(int controlId) {
+    return controlId == IDC_LOW_THRESHOLD;
+}
+
+int ClampThresholdControl(int controlId, int value) {
+    return IsLowThresholdControl(controlId) ? ClampLowThreshold(value) : ClampHighThreshold(value);
+}
+
+int ThresholdMin(int controlId) {
+    return IsLowThresholdControl(controlId) ? kLowThresholdMin : kHighThresholdMin;
+}
+
+int ThresholdMax(int controlId) {
+    return IsLowThresholdControl(controlId) ? kLowThresholdMax : kHighThresholdMax;
+}
+
+void SetThresholdValue(HWND dialog, int editId, int spinId, int value) {
+    g_updatingThresholdControls = true;
+    SetDlgItemInt(dialog, editId, value, FALSE);
+    g_updatingThresholdControls = false;
+    SendMessageW(GetDlgItem(dialog, spinId), UDM_SETPOS32, 0, static_cast<LPARAM>(value));
+}
+
+void InitThresholdSpin(HWND dialog, int editId, int spinId, int value) {
+    const HWND edit = GetDlgItem(dialog, editId);
+    const HWND spin = GetDlgItem(dialog, spinId);
+    const int clamped = ClampThresholdControl(editId, value);
+    SendMessageW(spin, UDM_SETBUDDY, 0, reinterpret_cast<LPARAM>(edit));
+    SendMessageW(spin, UDM_SETRANGE32, 0,
+                 MAKELPARAM(ThresholdMin(editId), ThresholdMax(editId)));
+    SetThresholdValue(dialog, editId, spinId, clamped);
+}
+
+bool HandleThresholdSpinChange(HWND dialog, const NMUPDOWN* change) {
+    int editId = 0;
+    int spinId = 0;
+    if (change->hdr.idFrom == IDC_LOW_THRESHOLD_SPIN) {
+        editId = IDC_LOW_THRESHOLD;
+        spinId = IDC_LOW_THRESHOLD_SPIN;
+    } else if (change->hdr.idFrom == IDC_HIGH_THRESHOLD_SPIN) {
+        editId = IDC_HIGH_THRESHOLD;
+        spinId = IDC_HIGH_THRESHOLD_SPIN;
+    } else {
+        return false;
     }
-    return threshold;
+
+    int value = ReadThresholdText(dialog, editId);
+    if (value == 0 && GetWindowTextLengthW(GetDlgItem(dialog, editId)) == 0) {
+        value = ThresholdMin(editId);
+    }
+    value += change->iDelta;
+    value = ClampThresholdControl(editId, value);
+    SetThresholdValue(dialog, editId, spinId, value);
+    return true;
+}
+
+void CommitThresholdEdit(HWND dialog, int editId, int spinId) {
+    if (g_updatingThresholdControls) {
+        return;
+    }
+
+    const HWND edit = GetDlgItem(dialog, editId);
+    if (GetWindowTextLengthW(edit) == 0) {
+        SetThresholdValue(dialog, editId, spinId, ThresholdMin(editId));
+        return;
+    }
+
+    const int value = ClampThresholdControl(editId, ReadThresholdText(dialog, editId));
+    SetThresholdValue(dialog, editId, spinId, value);
 }
 
 void UpdateCompatibilityText(HWND dialog, LaptopBrand brand) {
@@ -61,9 +128,7 @@ void UpdateCompatibilityText(HWND dialog, LaptopBrand brand) {
     std::wstring text = info.compatibilityDescription;
 
     if (brand == LaptopBrand::Acer) {
-        const auto acerStatus = ChargeControl::ProbeAcerWmi();
-        text += L"\n\n";
-        text += ChargeControl::FormatAcerStatusText(acerStatus);
+        text += L"\n\nPulsa 'Probar WMI / modo salud Acer' para diagnosticar.";
     }
 
     SetDlgItemTextW(dialog, IDC_COMPAT_INFO, text.c_str());
@@ -79,39 +144,6 @@ void PopulateBrandCombo(HWND combo) {
         SendMessageW(combo, CB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(GetBrandInfo(brand).displayName));
     }
-}
-
-void InitThresholdSpin(HWND dialog, int editId, int spinId, int value) {
-    const HWND edit = GetDlgItem(dialog, editId);
-    const HWND spin = GetDlgItem(dialog, spinId);
-    SetDlgItemInt(dialog, editId, value, FALSE);
-    SendMessageW(spin, UDM_SETBUDDY, 0, reinterpret_cast<LPARAM>(edit));
-    SendMessageW(spin, UDM_SETRANGE32, 0, MAKELPARAM(100, 1));
-    SendMessageW(spin, UDM_SETPOS32, 0, static_cast<LPARAM>(value));
-}
-
-bool HandleThresholdSpinChange(HWND dialog, const NMUPDOWN* change) {
-    int editId = 0;
-    if (change->hdr.idFrom == IDC_LOW_THRESHOLD_SPIN) {
-        editId = IDC_LOW_THRESHOLD;
-    } else if (change->hdr.idFrom == IDC_HIGH_THRESHOLD_SPIN) {
-        editId = IDC_HIGH_THRESHOLD;
-    } else {
-        return false;
-    }
-
-    int value = static_cast<int>(GetDlgItemInt(dialog, editId, nullptr, FALSE));
-    value += change->iDelta;
-    if (value < 1) {
-        value = 1;
-    } else if (value > 100) {
-        value = 100;
-    }
-
-    SetDlgItemInt(dialog, editId, value, FALSE);
-    const HWND spin = GetDlgItem(dialog, static_cast<int>(change->hdr.idFrom));
-    SendMessageW(spin, UDM_SETPOS32, 0, static_cast<LPARAM>(value));
-    return true;
 }
 
 void SetTestSoundButtonState(HWND dialog, bool playing) {
@@ -155,6 +187,15 @@ INT_PTR CALLBACK ConfigDialogProc(HWND dialog, UINT message, WPARAM wParam, LPAR
         }
         case WM_COMMAND:
             switch (LOWORD(wParam)) {
+                case IDC_LOW_THRESHOLD:
+                case IDC_HIGH_THRESHOLD:
+                    if (HIWORD(wParam) == EN_KILLFOCUS) {
+                        const int editId = LOWORD(wParam);
+                        const int spinId = editId == IDC_LOW_THRESHOLD ? IDC_LOW_THRESHOLD_SPIN
+                                                                         : IDC_HIGH_THRESHOLD_SPIN;
+                        CommitThresholdEdit(dialog, editId, spinId);
+                    }
+                    return TRUE;
                 case IDC_LAPTOP_BRAND:
                     if (HIWORD(wParam) == CBN_SELCHANGE) {
                         const int index =
@@ -219,10 +260,12 @@ INT_PTR CALLBACK ConfigDialogProc(HWND dialog, UINT message, WPARAM wParam, LPAR
                     return TRUE;
                 }
                 case IDC_STOP_CHARGE: {
+                    CommitThresholdEdit(dialog, IDC_HIGH_THRESHOLD, IDC_HIGH_THRESHOLD_SPIN);
                     const int brandIndex =
                         static_cast<int>(SendMessageW(GetDlgItem(dialog, IDC_LAPTOP_BRAND),
                                                       CB_GETCURSEL, 0, 0));
-                    const int threshold = ReadThresholdFromDialog(dialog, IDC_HIGH_THRESHOLD);
+                    const int threshold =
+                        ClampHighThreshold(ReadThresholdText(dialog, IDC_HIGH_THRESHOLD));
 
                     const auto result = ChargeControl::TryStopCharging(
                         BrandFromIndex(brandIndex), threshold);
@@ -237,13 +280,19 @@ INT_PTR CALLBACK ConfigDialogProc(HWND dialog, UINT message, WPARAM wParam, LPAR
                         return TRUE;
                     }
 
-                    const int lowThreshold = ReadThresholdFromDialog(dialog, IDC_LOW_THRESHOLD);
-                    const int highThreshold = ReadThresholdFromDialog(dialog, IDC_HIGH_THRESHOLD);
+                    CommitThresholdEdit(dialog, IDC_LOW_THRESHOLD, IDC_LOW_THRESHOLD_SPIN);
+                    CommitThresholdEdit(dialog, IDC_HIGH_THRESHOLD, IDC_HIGH_THRESHOLD_SPIN);
+
+                    const int lowThreshold =
+                        ClampLowThreshold(ReadThresholdText(dialog, IDC_LOW_THRESHOLD));
+                    const int highThreshold =
+                        ClampHighThreshold(ReadThresholdText(dialog, IDC_HIGH_THRESHOLD));
                     if (lowThreshold >= highThreshold) {
                         ShowMessageBoxCentered(
                             dialog,
                             L"El limite bajo debe ser menor que el limite alto.\n"
-                            L"Ejemplo: 20% descarga y 80% carga.",
+                            L"Bajo: 0-60% descarga. Alto: 60-90% carga.\n"
+                            L"Ejemplo: 20% y 80%.",
                             L"Limites invalidos", MB_ICONWARNING | MB_OK);
                         return TRUE;
                     }

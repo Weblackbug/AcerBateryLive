@@ -14,6 +14,8 @@
 
 #include "LaptopBrands.hpp"
 
+#include "ToastNotifier.hpp"
+
 #include "resource.h"
 
 
@@ -27,6 +29,8 @@ constexpr wchar_t kWindowClass[] = L"VidaUtilBateriaHiddenWindow";
 constexpr wchar_t kMutexName[] = L"Global\\VidaUtilBateria_SingleInstance";
 
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
+constexpr UINT kToastActionMessage = WM_APP + 2;
+constexpr UINT kOpenConfigMessage = WM_APP + 3;
 
 constexpr UINT kPollIntervalMs = 5000;
 
@@ -34,7 +38,36 @@ constexpr UINT kPollIntervalMs = 5000;
 
 App* g_appInstance = nullptr;
 
+bool IsStartupLaunch() {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) {
+        return false;
+    }
 
+    bool startupLaunch = false;
+    for (int i = 1; i < argc; ++i) {
+        if (_wcsicmp(argv[i], L"--startup") == 0) {
+            startupLaunch = true;
+            break;
+        }
+    }
+
+    LocalFree(argv);
+    return startupLaunch;
+}
+
+bool ForwardMessageToRunningInstance(UINT message) {
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        const HWND existingWindow = FindWindowW(kWindowClass, nullptr);
+        if (existingWindow) {
+            PostMessageW(existingWindow, message, 0, 0);
+            return true;
+        }
+        Sleep(100);
+    }
+    return false;
+}
 
 }  // namespace
 
@@ -69,6 +102,18 @@ LRESULT CALLBACK App::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             case WM_TIMER:
 
                 g_appInstance->OnTimer();
+
+                return 0;
+
+            case kToastActionMessage:
+
+                g_appInstance->StopAlertSound();
+
+                return 0;
+
+            case kOpenConfigMessage:
+
+                g_appInstance->OpenConfig();
 
                 return 0;
 
@@ -118,7 +163,9 @@ bool App::Initialize(HINSTANCE instance) {
 
     wc.lpszClassName = kWindowClass;
 
-    RegisterClassExW(&wc);
+    if (!RegisterClassExW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+        return false;
+    }
 
 
 
@@ -150,8 +197,6 @@ bool App::Initialize(HINSTANCE instance) {
 
     timerId_ = SetTimer(hwnd_, 1, kPollIntervalMs, nullptr);
 
-    OnTimer();
-
     return timerId_ != 0;
 
 }
@@ -170,6 +215,8 @@ void App::Shutdown() {
 
     StopAlert();
 
+    toast_.Shutdown();
+
     tray_.Destroy();
 
     if (hwnd_) {
@@ -185,6 +232,14 @@ void App::Shutdown() {
 }
 
 
+
+void App::EnsureToastReady() {
+    if (toastReady_ || !instance_) {
+        return;
+    }
+
+    toastReady_ = toast_.Initialize(instance_, L"WeBlackBug.VidaUtilBateria");
+}
 
 void App::UpdateTrayTooltip() {
 
@@ -255,6 +310,7 @@ void App::EvaluateBatteryLevel() {
     } else {
 
         highThresholdReached_ = false;
+        highChargeToastSent_ = false;
 
         if (activeAlert_ == AlertKind::HighCharge) {
 
@@ -279,6 +335,7 @@ void App::EvaluateBatteryLevel() {
     } else {
 
         lowThresholdReached_ = false;
+        lowBatteryToastSent_ = false;
 
         if (activeAlert_ == AlertKind::LowBattery) {
 
@@ -332,7 +389,11 @@ void App::TriggerHighChargeAlert() {
 
 
 
-    tray_.ShowBalloon(L"Umbral alto de carga alcanzado", message);
+    if (!highChargeToastSent_) {
+        EnsureToastReady();
+        toast_.ShowAlert(L"Umbral alto de carga alcanzado", message, L"high-charge");
+        highChargeToastSent_ = true;
+    }
 
 
 
@@ -382,7 +443,11 @@ void App::TriggerLowBatteryAlert() {
 
 
 
-    tray_.ShowBalloon(L"Umbral bajo de descarga alcanzado", message);
+    if (!lowBatteryToastSent_) {
+        EnsureToastReady();
+        toast_.ShowAlert(L"Umbral bajo de descarga alcanzado", message, L"low-battery");
+        lowBatteryToastSent_ = true;
+    }
 
 }
 
@@ -404,10 +469,6 @@ void App::StopAlertSound() {
 
     StopAlert();
 
-    lowThresholdReached_ = false;
-
-    highThresholdReached_ = false;
-
     tray_.ShowBalloon(L"Aviso detenido", L"El sonido de alerta se ha detenido.");
 
 }
@@ -418,13 +479,15 @@ void App::OpenConfig() {
 
     auto& config = Config::Instance().Get();
 
-    if (ShowConfigDialog(hwnd_, config) == IDOK) {
+    if (ShowConfigDialog(nullptr, config) == IDOK) {
 
         Config::Instance().Save();
 
         lowThresholdReached_ = false;
 
         highThresholdReached_ = false;
+        lowBatteryToastSent_ = false;
+        highChargeToastSent_ = false;
 
         StopAlert();
 
@@ -438,7 +501,7 @@ void App::OpenConfig() {
 
 void App::OpenAbout() {
 
-    ShowAboutDialog(hwnd_);
+    ShowAboutDialog(nullptr);
 
 }
 
@@ -531,23 +594,21 @@ int App::Run(HINSTANCE instance) {
     const HANDLE mutex = CreateMutexW(nullptr, TRUE, kMutexName);
 
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
-
-        ShowMessageBoxCentered(nullptr,
-
-                               L"VidaUtil de la Bateria ya esta en ejecucion.\nBusca el icono en la bandeja "
-
-                               L"del sistema.",
-
-                               L"VidaUtil de la Bateria", MB_ICONINFORMATION | MB_OK);
+        const UINT message = ToastNotifier::IsStopAlertActivation() ? kToastActionMessage
+                                                                      : kOpenConfigMessage;
+        if (!ForwardMessageToRunningInstance(message)) {
+            ShowMessageBoxCentered(
+                nullptr,
+                L"No se pudo contactar con la instancia en ejecucion.\n"
+                L"Espera unos segundos o reinicia el equipo si el problema continua.",
+                L"VidaUtil de la Bateria", MB_ICONWARNING | MB_OK);
+        }
 
         if (mutex) {
-
             CloseHandle(mutex);
-
         }
 
         return 0;
-
     }
 
 
@@ -569,6 +630,8 @@ int App::Run(HINSTANCE instance) {
 
 
     if (!Initialize(instance)) {
+
+        Shutdown();
 
         ShowMessageBoxCentered(nullptr, L"No se pudo iniciar la aplicacion.", L"Error",
 
@@ -592,14 +655,8 @@ int App::Run(HINSTANCE instance) {
 
 
 
-    if (!Config::Instance().Get().firstRunComplete) {
-
-        OpenConfig();
-
-        Config::Instance().Get().firstRunComplete = true;
-
-        Config::Instance().Save();
-
+    if (!IsStartupLaunch()) {
+        PostMessageW(hwnd_, kOpenConfigMessage, 0, 0);
     }
 
 
@@ -607,15 +664,8 @@ int App::Run(HINSTANCE instance) {
     MSG msg{};
 
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
-
-        if (!IsDialogMessageW(GetActiveWindow(), &msg)) {
-
-            TranslateMessage(&msg);
-
-            DispatchMessageW(&msg);
-
-        }
-
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
     }
 
 

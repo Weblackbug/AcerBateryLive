@@ -5,18 +5,18 @@ IDI_APP_ICON ICON "app.ico"
 
 IDD_CONFIG DIALOGEX 0, 0, 380, 340
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Configuracion - VidaUtil de la Bateria"
+CAPTION "Configuracion - VidaUtil de la Bateria 1.0.1 - Sergi Serrano"
 FONT 9, "Segoe UI"
 BEGIN
     LTEXT           "Limites de aviso (descarga / carga):", IDC_STATIC, 14, 14, 180, 10
 
     LTEXT           "Bajo (% descarga):", IDC_STATIC, 14, 32, 80, 10
-    EDITTEXT        IDC_LOW_THRESHOLD, 100, 30, 36, 14, ES_NUMBER | ES_READONLY
-    CONTROL         "", IDC_LOW_THRESHOLD_SPIN, "msctls_updown32", UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_ARROWKEYS | UDS_NOTHOUSANDS | WS_TABSTOP, 136, 30, 11, 14
+    EDITTEXT        IDC_LOW_THRESHOLD, 100, 30, 36, 14, ES_NUMBER | ES_AUTOHSCROLL
+    CONTROL         "", IDC_LOW_THRESHOLD_SPIN, "msctls_updown32", UDS_ALIGNRIGHT | UDS_ARROWKEYS | UDS_NOTHOUSANDS | WS_TABSTOP, 136, 30, 11, 14
 
     LTEXT           "Alto (% carga):", IDC_STATIC, 170, 32, 70, 10
-    EDITTEXT        IDC_HIGH_THRESHOLD, 244, 30, 36, 14, ES_NUMBER | ES_READONLY
-    CONTROL         "", IDC_HIGH_THRESHOLD_SPIN, "msctls_updown32", UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_ARROWKEYS | UDS_NOTHOUSANDS | WS_TABSTOP, 280, 30, 11, 14
+    EDITTEXT        IDC_HIGH_THRESHOLD, 244, 30, 36, 14, ES_NUMBER | ES_AUTOHSCROLL
+    CONTROL         "", IDC_HIGH_THRESHOLD_SPIN, "msctls_updown32", UDS_ALIGNRIGHT | UDS_ARROWKEYS | UDS_NOTHOUSANDS | WS_TABSTOP, 280, 30, 11, 14
 
     LTEXT           "Archivo de sonido (MP3/WAV):", IDC_STATIC, 14, 56, 130, 10
     EDITTEXT        IDC_SOUND_PATH, 14, 70, 280, 14, ES_AUTOHSCROLL
@@ -44,7 +44,7 @@ CAPTION "Acerca de"
 FONT 9, "Segoe UI"
 BEGIN
     ICON            IDI_APP_ICON, IDC_STATIC, 14, 14, 20, 20
-    LTEXT           "VidaUtil de la Bateria 1.0", IDC_STATIC, 44, 14, 220, 12
+    LTEXT           "VidaUtil de la Bateria 1.0.1", IDC_STATIC, 44, 14, 220, 12
     LTEXT           "By Segi Serrano", IDC_STATIC, 44, 30, 220, 10
     LTEXT           "(c) 2026 -WeBlackBug-", IDC_STATIC, 44, 44, 220, 10
     LTEXT           "Monitoriza la carga de la bateria y avisa con sonido\ncuando alcanza los limites bajo (descarga) y alto (carga).", IDC_STATIC, 14, 72, 250, 24

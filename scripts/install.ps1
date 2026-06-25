@@ -22,7 +22,7 @@ New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 Copy-Item -Path $sourceExe -Destination $targetExe -Force
 
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-Set-ItemProperty -Path $runKey -Name "VidaUtilBateria" -Value "`"$targetExe`""
+Set-ItemProperty -Path $runKey -Name "VidaUtilBateria" -Value "`"$targetExe`" --startup"
 
 Write-Host ""
 Write-Host "Instalacion completada." -ForegroundColor Green

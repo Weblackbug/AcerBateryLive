@@ -36,7 +36,7 @@ bool TrayIcon::Create(HWND hwnd, HINSTANCE instance, UINT callbackMessage,
     nid_.cbSize = sizeof(NOTIFYICONDATAW);
     nid_.hWnd = hwnd_;
     nid_.uID = kTrayIconId;
-    nid_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    nid_.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
     nid_.uCallbackMessage = callbackMessage;
     nid_.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_APP_ICON));
     if (!nid_.hIcon) {
@@ -69,7 +69,12 @@ void TrayIcon::UpdateTooltip(const std::wstring& text) {
         return;
     }
 
-    wcsncpy_s(nid_.szTip, text.c_str(), _TRUNCATE);
+    std::wstring tooltip = text;
+    if (tooltip.size() > 127) {
+        tooltip.resize(127);
+    }
+
+    wcsncpy_s(nid_.szTip, tooltip.c_str(), _TRUNCATE);
     nid_.uFlags = NIF_TIP;
     Shell_NotifyIconW(NIM_MODIFY, &nid_);
 }

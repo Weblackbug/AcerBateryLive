@@ -1,5 +1,8 @@
 # Carpetas de compilacion
 build/
+dist/
+packaging/*.cer
+packaging/*.pfx
 out/
 .vs/
 x64/
